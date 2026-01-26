@@ -52,7 +52,12 @@ app.post('/jobs', async (req, res) => {
     // 2. Enqueue to Redis
     const queue = getQueue(priority);
     await queue.add(type, { jobId: job.id, ...payload }, {
-      jobId: job.id // Use DB UUID as BullMQ Job ID for easy tracking
+      jobId: job.id, // Use DB UUID as BullMQ Job ID for easy tracking
+      attempts: 3,   // Retry up to 3 times
+      backoff: {
+        type: 'exponential',
+        delay: 1000,
+      }
     });
 
     res.status(201).json({ jobId: job.id });
