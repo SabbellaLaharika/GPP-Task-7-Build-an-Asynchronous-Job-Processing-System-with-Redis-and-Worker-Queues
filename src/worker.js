@@ -40,8 +40,8 @@ async function handleEmailSend(job) {
 
     const info = await transporter.sendMail({
         from: process.env.MAIL_FROM || 'system@example.com',
-        to,
-        subject,
+        to: to,
+        subject: subject,
         text: body,
     });
 
@@ -77,13 +77,28 @@ async function updateStatus(jobId, status, updates = {}) {
     await query(queryText, queryParams);
 }
 
+// --- Structured Logging Helper ---
+const log = (level, message, context = {}) => {
+    console.log(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level,
+        message,
+        ...context
+    }));
+};
+
 // --- Main Worker Logic ---
 
 const processJob = async (job) => {
-    console.log(`Processing job ${job.id} (Type: ${job.name}, Queue: ${job.queueName})`);
+    const context = {
+        jobId: job.id,
+        jobType: job.name,
+        attemptNumber: job.attemptsMade + 1
+    };
 
-    // Update status to processing and increment attempts
-    // Note: job.attemptsMade is 0 for first attempt, so attempt number is job.attemptsMade + 1
+    log('info', 'Processing job started', context);
+
+    // Update status to processing
     await updateStatus(job.id, 'processing', { attempts: job.attemptsMade + 1 });
 
     try {
@@ -98,10 +113,10 @@ const processJob = async (job) => {
             default:
                 throw new Error(`Unknown job type: ${job.name}`);
         }
+        log('info', 'Job processed successfully', context);
         return result;
     } catch (error) {
-        // Retry logic is handled by BullMQ, but we log the error
-        console.error(`Job ${job.id} failed attempt ${job.attemptsMade + 1}:`, error.message);
+        log('error', `Job failed attempt ${context.attemptNumber}`, { ...context, error: error.message });
         throw error; // Re-throw so BullMQ knows it failed
     }
 };
